@@ -33,6 +33,8 @@ struct Seller_Request {
 	struct Transaction *t;
 	pthread_mutex_t mutex;
 	pthread_cond_t cv;
+	pthread_mutex_t cond_mutex;
+	int customer_wait;
 };
 
 int numOfSellers,numOfProductTypes,days;
@@ -53,59 +55,51 @@ void *seller_thread(void *ptr) {
 	struct Transaction *t = NULL;
 	struct C_Account *c_acc = NULL;
 	struct Product *p = NULL;
-	int count;
 	while(1) {
 		if(request->t != NULL) {
 			t = request->t;
-			c_acc = find_c_account_by_ID(t->c_ID);
+			c_acc = find_c_account_by_ID(request->c_ID);
 			p = &products[t->product_ID];
+			c_acc->allowed_op--;
 			if(t->op == 0) { //handle buy operation
-				fprintf(stderr,"girdi1\n");
 				pthread_mutex_lock(&(p->mutex));
 				if(p->current_count >= t->numOfProduct) {
 					p->current_count -= t->numOfProduct;
-					c_acc->allowed_op--;
 				}
 				else {
 					free(t);
-					t = NULL;
+					request->t = NULL;
 				}
 				pthread_mutex_unlock(&(p->mutex));
-				fprintf(stderr,"cikti1\n");
 			}
 			else if(t->op == 1) { //handle reserve operation
-				fprintf(stderr,"girdi2\n");
 				pthread_mutex_lock(&(p->mutex));
 				if(p->current_count >= t->numOfProduct) {
 					p->current_count -= t->numOfProduct;
-					c_acc->allowed_op--;
 					c_acc->allowed_res -= t->numOfProduct;
 				}
 				else {
 					free(t);
-					t = NULL;
+					request->t = NULL;
 				}
 				pthread_mutex_unlock(&(p->mutex));
-				fprintf(stderr,"cikti2\n");
 			}
 			else { //handle cancel reservation operation
-				fprintf(stderr,"girdi3\n");
 				pthread_mutex_lock(&(p->mutex));
 				p->current_count += t->cancelled_transaction->numOfProduct;
-				c_acc->allowed_op--;
 				pthread_mutex_unlock(&(p->mutex));
-				fprintf(stderr,"cikti3\n");
 			}
-			if(t != NULL) { //If transaction accepted, append to the transactions list
+			if(request->t != NULL) { //If transaction accepted, append to the transactions list
 				pthread_mutex_lock(&transaction_mutex);
-				fprintf(stderr,"girdi4\n");
 				append_transaction(t);
-				fprintf(stderr,"cikti4\n");
 				pthread_mutex_unlock(&transaction_mutex);
 				free(t);
-				t = NULL;
+				request->t = NULL;
 			}
+			pthread_mutex_lock(&(request->cond_mutex));
 			pthread_cond_signal(&(request->cv));
+			request->customer_wait = 0;
+			pthread_mutex_unlock(&(request->cond_mutex));
 		}
 	}
 }
@@ -116,22 +110,30 @@ void *customer_thread(void *ptr) {
 	struct Transaction *t;
 	int day=1;
 	int i;
-	int count;
+	int count=1;
 	while(((struct C_Account*)ptr)->allowed_op > 0) {
 		t = prepare_transaction(ptr);
 		while(t != NULL) {
 			for(i=0;i<numOfSellers;i++) {
 				if(pthread_mutex_trylock(&(seller_requests[i].mutex))==0) {
+					seller_requests[i].c_ID = c_account->c_ID;
+					seller_requests[i].customer_wait = 1;
 					seller_requests[i].t = malloc(sizeof(struct Transaction));
 					memcpy(seller_requests[i].t,t,sizeof(struct Transaction));
-					pthread_cond_wait(&(seller_requests[i].cv),&(seller_requests[i].mutex));
+					pthread_mutex_lock(&(seller_requests[i].cond_mutex));
+					while(seller_requests[i].customer_wait) {
+						pthread_cond_wait(&(seller_requests[i].cv),&(seller_requests[i].cond_mutex));
+					}
+					pthread_mutex_unlock(&(seller_requests[i].cond_mutex));
 					pthread_mutex_unlock(&(seller_requests[i].mutex));
+					free(t);
 					t = NULL;
 					break;
 				}
 			}
-		}	
+		}
 	}
+//	fprintf(stderr,"----------customer-%d bitirdi----------\n",c_account->c_ID);
 }
 
 void append_transaction(struct Transaction *t) {
@@ -158,6 +160,7 @@ struct Transaction *prepare_transaction(struct C_Account *c) {
 	t_count++;
 	pthread_mutex_unlock(&transaction_mutex);
 	t->c_ID = c->c_ID;
+	t->next = NULL;
 	
 	do {
 		flag = 0;
@@ -176,11 +179,11 @@ struct Transaction *prepare_transaction(struct C_Account *c) {
 			else flag = 1;
 		}
 		else {
-			t->cancelled_transaction = malloc(sizeof(struct Transaction));
-			if((t->cancelled_transaction = transaction_to_cancel(c->c_ID)) != NULL) t->op = 2;
-			else {
+			if((t->cancelled_transaction = transaction_to_cancel(c->c_ID)) != NULL) {
+				t->op = 2;
+			}
+			else { 
 				flag = 1;
-				free(t->cancelled_transaction);
 			}
 		}
 	}
@@ -199,12 +202,25 @@ struct C_Account *find_c_account_by_ID(int id) {
 	return &c_accounts[i];
 }
 
+int sizeOfList(struct Transaction *t) {
+	struct Transaction *temp = t;
+	int size=0;
+	if(t != NULL) {
+		while(temp) {
+			size++;
+			temp = temp->next;
+		}
+		return size;
+	}
+	return 0;
+}
+
 struct Transaction *transaction_to_cancel(int c_ID) {
-	int count;
+	int count=0;
 	struct Transaction *t[20];
 	struct Transaction *temp = transactions;
-	while(temp != NULL && temp->day <= currentday) {
-		if(temp->day == currentday && temp->c_ID == c_ID) {
+	while((temp != NULL) && (temp->day <= currentday)) {
+		if((temp->day == currentday) && (temp->c_ID == c_ID) && (temp->op == 1)) {
 			t[count] = temp;
 			count++;
 		}
@@ -215,12 +231,23 @@ struct Transaction *transaction_to_cancel(int c_ID) {
 	
 }
 
+
+
 struct Transaction *find_transaction_by_ID(int id) {
 	struct Transaction *t = transactions;
 	while(t->t_ID != id) {
 		t = t->next;
 	}
 	return t;
+}
+
+void print_log() {
+	struct Transaction *t = transactions;
+	int day = 1;
+	while(t != NULL) {
+		printf("%d\t%d\t%d\n",t->c_ID,t->op,t->day);
+		t = t->next;
+	}
 }
 
 int main() {
@@ -273,4 +300,5 @@ int main() {
 	
 //	for(i=0;i<numOfSellers;i++) pthread_join(seller[i],NULL);
 	for(i=0;i<numOfCustomers;i++) pthread_join(customer[i],NULL);
+	print_log();
 }
