@@ -1,0 +1,275 @@
+2	1	1
+2	0	1
+2	2	1
+2	0	1
+2	0	1
+2	0	1
+2	0	1
+2	0	1
+1	0	1
+1	1	1
+1	0	1
+1	0	1
+1	1	1
+3	1	1
+4	0	1
+4	1	1
+4	2	1
+3	0	1
+4	0	1
+4	1	1
+6	0	1
+6	0	1
+6	0	1
+6	0	1
+3	2	1
+5	1	1
+5	0	1
+5	0	1
+5	1	1
+2	1	2
+5	1	2
+5	2	2
+3	0	2
+3	0	2
+3	0	2
+2	1	2
+2	0	2
+2	2	2
+2	1	2
+2	0	2
+2	1	2
+2	2	2
+4	1	2
+6	1	2
+6	0	2
+6	2	2
+6	1	2
+1	0	2
+1	0	2
+1	1	2
+1	1	2
+1	1	2
+4	1	2
+4	2	2
+4	0	2
+4	2	2
+6	1	2
+1	1	3
+5	1	3
+5	0	3
+6	0	3
+6	0	3
+5	1	3
+6	0	3
+1	2	3
+1	1	3
+1	2	3
+1	0	3
+2	0	3
+2	1	3
+2	2	3
+2	1	3
+2	0	3
+2	2	3
+2	0	3
+3	1	3
+4	1	3
+4	2	3
+4	0	3
+4	0	3
+3	2	3
+3	0	3
+2	0	3
+6	1	3
+1	0	4
+6	0	4
+6	0	4
+6	0	4
+2	0	4
+5	0	4
+5	1	4
+1	0	4
+2	1	4
+2	0	4
+2	0	4
+2	2	4
+2	1	4
+2	2	4
+1	0	4
+3	1	4
+3	1	4
+3	0	4
+5	2	4
+1	0	4
+4	1	4
+4	0	4
+4	2	4
+4	1	4
+4	0	4
+3	0	5
+4	0	5
+6	0	5
+4	0	5
+6	1	5
+4	1	5
+6	1	5
+4	0	5
+6	2	5
+2	1	5
+1	0	5
+1	1	5
+2	1	5
+5	0	5
+2	2	5
+2	1	5
+2	1	5
+1	0	5
+1	2	5
+1	1	5
+3	0	5
+3	1	5
+5	1	5
+
+----------------------------------
+
+DAY 1
+
+number of transactions performed:
+
+customer-1: 5
+customer-2: 8
+customer-3: 3
+customer-4: 5
+customer-5: 4
+customer-6: 4
+seller-0: 25
+seller-1: 2
+seller-2: 1
+seller-3: 1
+seller-4: 0
+
+number of products sold, reserved and canceled
+
+product#0	5	0	0
+product#1	4	10	5
+product#2	0	10	10
+product#3	16	0	0
+product#4	11	4	0
+product#5	8	0	0
+product#6	24	4	4
+product#7	13	4	0
+
+-------------------------------------
+DAY 2
+
+number of transactions performed:
+
+customer-1: 5
+customer-2: 8
+customer-3: 3
+customer-4: 5
+customer-5: 2
+customer-6: 5
+seller-0: 12
+seller-1: 14
+seller-2: 2
+seller-3: 0
+seller-4: 0
+
+number of products sold, reserved and canceled
+
+product#0	9	1	0
+product#1	0	4	0
+product#2	8	0	0
+product#3	5	8	5
+product#4	10	7	5
+product#5	13	6	0
+product#6	5	2	2
+product#7	4	9	9
+
+-------------------------------------
+DAY 3
+
+number of transactions performed:
+
+customer-1: 5
+customer-2: 8
+customer-3: 3
+customer-4: 4
+customer-5: 3
+customer-6: 4
+seller-0: 14
+seller-1: 7
+seller-2: 0
+seller-3: 4
+seller-4: 2
+
+number of products sold, reserved and canceled
+
+product#0	4	0	0
+product#1	9	0	0
+product#2	5	0	0
+product#3	9	4	4
+product#4	0	14	9
+product#5	9	0	0
+product#6	17	11	8
+product#7	12	1	0
+
+-------------------------------------
+DAY 4
+
+number of transactions performed:
+
+customer-1: 4
+customer-2: 7
+customer-3: 3
+customer-4: 5
+customer-5: 3
+customer-6: 3
+seller-0: 7
+seller-1: 7
+seller-2: 5
+seller-3: 3
+seller-4: 3
+
+number of products sold, reserved and canceled
+
+product#0	3	3	0
+product#1	2	3	3
+product#2	27	0	0
+product#3	10	7	7
+product#4	16	0	0
+product#5	0	1	0
+product#6	10	1	0
+product#7	11	1	1
+
+-------------------------------------
+DAY 5
+
+number of transactions performed:
+
+customer-1: 5
+customer-2: 5
+customer-3: 3
+customer-4: 4
+customer-5: 2
+customer-6: 4
+seller-0: 3
+seller-1: 9
+seller-2: 9
+seller-3: 0
+seller-4: 2
+
+number of products sold, reserved and canceled
+
+product#0	16	6	1
+product#1	1	5	5
+product#2	0	5	3
+product#3	14	0	0
+product#4	5	1	0
+product#5	5	3	0
+product#6	10	4	0
+product#7	0	4	0
+
+-------------------------------------

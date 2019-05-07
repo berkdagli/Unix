@@ -27,6 +27,7 @@ struct Transaction {
 	int product_ID;
 	int numOfProduct;
 	int day;
+	int cancelled;
 	struct Transaction *cancelled_transaction;
 	struct Transaction *next;
 };
@@ -94,6 +95,7 @@ void *seller_thread(void *ptr) {
 			}
 			else { //handle cancel reservation operation
 				pthread_mutex_lock(&(p->mutex));
+				t->cancelled_transaction->cancelled = 1;
 				p->current_count += t->cancelled_transaction->numOfProduct;
 				pthread_mutex_unlock(&(p->mutex));
 			}
@@ -282,7 +284,7 @@ struct Transaction *transaction_to_cancel(int c_ID) {
 	struct Transaction *t[20];
 	struct Transaction *temp = transactions;
 	while(temp != NULL) {
-		if((temp->day == currentday) && (temp->c_ID == c_ID) && (temp->op == 1)) {
+		if((temp->day == currentday) && (temp->c_ID == c_ID) && (temp->op == 1) && temp->cancelled == 0) {
 			t[count] = temp;
 			count++;
 		}
@@ -310,19 +312,19 @@ void initialize_products() {
 	}
 }
 
-void print_log() {
+void print_log(FILE *fp) {
 	int i,j,sold,reserved,canceled;
 	int count=0;
 	struct Transaction *t = transactions;
 	while(t != NULL) {
-		fprintf(stderr,"%d\t%d\t%d\n",t->c_ID,t->op,t->day);
+		fprintf(fp,"%d\t%d\t%d\n",t->c_ID,t->op,t->day);
 		t = t->next;
 	}
-	fprintf(stderr,"\n----------------------------------\n\n");
+	fprintf(fp,"\n----------------------------------\n\n");
 
 	for(i=1;i<=days;i++) {
-		fprintf(stderr,"DAY %d\n\n",i);
-		fprintf(stderr,"number of transactions performed:\n\n");
+		fprintf(fp,"DAY %d\n\n",i);
+		fprintf(fp,"number of transactions performed:\n\n");
 		for(j=1;j<=numOfCustomers;j++) {
 			t = transactions;
 			while(t != NULL) {
@@ -331,22 +333,22 @@ void print_log() {
 				}
 				t = t->next;
 			}
-			fprintf(stderr,"customer-%d: %d\n",j,count);
+			fprintf(fp,"customer-%d: %d\n",j,count);
 			count = 0;
 		}
-		t = transactions;
 		for(j=0;j<numOfSellers;j++) {
+			t = transactions;
 			while(t != NULL) {
 				if(t->s_ID == j && t->day == i) {
 					count++;
 				}
 				t = t->next;
 			}
-			fprintf(stderr,"seller-%d: %d\n",j,count);
+			fprintf(fp,"seller-%d: %d\n",j,count);
 			count = 0;
 		}
 		
-		fprintf(stderr,"\nnumber of products sold, reserved and canceled\n\n");
+		fprintf(fp,"\nnumber of products sold, reserved and canceled\n\n");
 		
 		for(j=0;j<numOfProductTypes;j++) {
 			t = transactions;
@@ -361,15 +363,15 @@ void print_log() {
 					else if(t->op == 1) {
 						reserved += t->numOfProduct;
 					}
-					else {
+					else if(t->op == 2){
 						canceled += t->cancelled_transaction->numOfProduct;
 					}
 				}
 				t = t->next;
 			}
-			fprintf(stderr,"product#%d\t%d\t%d\t%d\n",j,sold,reserved,canceled);
+			fprintf(fp,"product#%d\t%d\t%d\t%d\n",j,sold,reserved,canceled);
 		}
-		fprintf(stderr,"\n-------------------------------------\n");
+		fprintf(fp,"\n-------------------------------------\n");
 	}
 	
 }
@@ -413,6 +415,7 @@ int main() {
 		c_accounts[i].allowed_op = num2;
 		c_accounts[i].allowed_res = num3;
 	}
+	fclose(fp);
 	
 	pthread_t *seller = malloc(numOfSellers*sizeof(pthread_t));
 	pthread_t *customer = malloc(numOfCustomers*sizeof(pthread_t));
@@ -439,5 +442,7 @@ int main() {
 	for(i=0;i<numOfCustomers;i++) {
 		pthread_cancel(customer[i]);
 	}
-	print_log();
+	fp = fopen("log.txt","w");
+	print_log(fp);
+	fclose(fp);
 }
