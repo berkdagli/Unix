@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 struct C_Account {
 	int c_ID;
 	int allowed_op;
 	int allowed_res;
+	pthread_mutex_t cust_mutex;
 };
 
 struct Product {
@@ -40,7 +42,11 @@ struct Seller_Request {
 int numOfSellers,numOfProductTypes,days;
 int t_count=0;
 int currentday=1;
+int dayEnd=0;
+int threadsReady;
+pthread_mutex_t threadsReady_mutex;
 pthread_mutex_t transaction_mutex; //mutex for appending transaction to the transaction list
+pthread_cond_t cv_dayEnd;
 struct Product *products;
 struct C_Account *c_accounts;
 struct Transaction *transactions;
@@ -101,6 +107,20 @@ void *seller_thread(void *ptr) {
 			request->customer_wait = 0;
 			pthread_mutex_unlock(&(request->cond_mutex));
 		}
+		if(dayEnd == 1) {
+			while(pthread_mutex_trylock(&(request->mutex))) {
+				pthread_cond_signal(&(request->cv));
+			}
+			pthread_mutex_lock(&(request->cond_mutex));
+			pthread_mutex_lock(&threadsReady_mutex);
+			threadsReady--;
+			pthread_mutex_unlock(&threadsReady_mutex);
+			while(dayEnd) {
+				pthread_cond_wait(&(cv_dayEnd),&(request->cond_mutex));
+			}
+			pthread_mutex_unlock(&(request->cond_mutex));
+			pthread_mutex_unlock(&(request->mutex));
+		}
 	}
 }
 
@@ -111,29 +131,53 @@ void *customer_thread(void *ptr) {
 	int day=1;
 	int i;
 	int count=1;
-	while(((struct C_Account*)ptr)->allowed_op > 0) {
-		t = prepare_transaction(ptr);
-		while(t != NULL) {
-			for(i=0;i<numOfSellers;i++) {
-				if(pthread_mutex_trylock(&(seller_requests[i].mutex))==0) {
-					seller_requests[i].c_ID = c_account->c_ID;
-					seller_requests[i].customer_wait = 1;
-					seller_requests[i].t = malloc(sizeof(struct Transaction));
-					memcpy(seller_requests[i].t,t,sizeof(struct Transaction));
-					pthread_mutex_lock(&(seller_requests[i].cond_mutex));
-					while(seller_requests[i].customer_wait) {
-						pthread_cond_wait(&(seller_requests[i].cv),&(seller_requests[i].cond_mutex));
+	int reset = 1;
+	while(1) {
+		while((dayEnd == 0) && ((struct C_Account*)ptr)->allowed_op > 0) {
+			if(dayEnd) {
+				pthread_mutex_lock(&(((struct C_Account*)ptr)->cust_mutex));
+				pthread_mutex_lock(&threadsReady_mutex);
+				threadsReady--;
+				pthread_mutex_unlock(&threadsReady_mutex);
+				while(dayEnd)
+					pthread_cond_wait(&(cv_dayEnd),&(((struct C_Account*)ptr)->cust_mutex));
+				pthread_mutex_unlock(&(((struct C_Account*)ptr)->cust_mutex));
+				((struct C_Account*)ptr)->allowed_op = c_account->allowed_op;
+				((struct C_Account*)ptr)->allowed_res = c_account->allowed_res;
+			}
+			t = prepare_transaction(ptr);
+			while(t != NULL) {
+				for(i=0;i<numOfSellers;i++) {
+					if(pthread_mutex_trylock(&(seller_requests[i].mutex))==0) {
+						seller_requests[i].c_ID = c_account->c_ID;
+						seller_requests[i].customer_wait = 1;
+						seller_requests[i].t = malloc(sizeof(struct Transaction));
+						memcpy(seller_requests[i].t,t,sizeof(struct Transaction));
+						pthread_mutex_lock(&(seller_requests[i].cond_mutex));
+						while(seller_requests[i].customer_wait) {
+							pthread_cond_wait(&(seller_requests[i].cv),&(seller_requests[i].cond_mutex));
+						}
+						pthread_mutex_unlock(&(seller_requests[i].cond_mutex));
+						pthread_mutex_unlock(&(seller_requests[i].mutex));
+						free(t);
+						t = NULL;
+						break;
 					}
-					pthread_mutex_unlock(&(seller_requests[i].cond_mutex));
-					pthread_mutex_unlock(&(seller_requests[i].mutex));
-					free(t);
-					t = NULL;
-					break;
 				}
 			}
 		}
-	}
-//	fprintf(stderr,"----------customer-%d bitirdi----------\n",c_account->c_ID);
+		if(dayEnd) {
+			pthread_mutex_lock(&(((struct C_Account*)ptr)->cust_mutex));
+			pthread_mutex_lock(&threadsReady_mutex);
+			threadsReady--;
+			pthread_mutex_unlock(&threadsReady_mutex);
+			while(dayEnd)
+				pthread_cond_wait(&(cv_dayEnd),&(((struct C_Account*)ptr)->cust_mutex));
+			pthread_mutex_unlock(&(((struct C_Account*)ptr)->cust_mutex));
+			((struct C_Account*)ptr)->allowed_op = c_account->allowed_op;
+			((struct C_Account*)ptr)->allowed_res = c_account->allowed_res;
+		}
+	}	
 }
 
 void append_transaction(struct Transaction *t) {
@@ -190,7 +234,6 @@ struct Transaction *prepare_transaction(struct C_Account *c) {
 	while(flag);
 	
 	t->day = currentday;
-	
 	return t;
 }
 
@@ -241,11 +284,17 @@ struct Transaction *find_transaction_by_ID(int id) {
 	return t;
 }
 
+void initialize_products() {
+	int i;
+	for(i=0;i<numOfProductTypes;i++) {
+		products[i].current_count = products[i].initial_count;
+	}
+}
+
 void print_log() {
 	struct Transaction *t = transactions;
-	int day = 1;
 	while(t != NULL) {
-		printf("%d\t%d\t%d\n",t->c_ID,t->op,t->day);
+		fprintf(stderr,"%d\t%d\t%d\n",t->c_ID,t->op,t->day);
 		t = t->next;
 	}
 }
@@ -266,6 +315,8 @@ int main() {
 	days = atoi(line);
 	fgets(line,sizeof(line),fp);
 	numOfProductTypes = atoi(line);
+	
+	threadsReady=numOfCustomers+numOfSellers;
 	
 	c_accounts = malloc(numOfCustomers*sizeof(struct C_Account));
 	products = malloc(numOfProductTypes*sizeof(struct Product));
@@ -299,6 +350,21 @@ int main() {
 	}
 	
 //	for(i=0;i<numOfSellers;i++) pthread_join(seller[i],NULL);
-	for(i=0;i<numOfCustomers;i++) pthread_join(customer[i],NULL);
+//	for(i=0;i<numOfCustomers;i++) pthread_join(customer[i],NULL);
+	
+	for(currentday=1;currentday<=days;currentday++) {
+		sleep(2);
+		dayEnd = 1;
+		while(threadsReady) {}
+		initialize_products();
+		threadsReady=numOfCustomers+numOfSellers;
+		if(currentday<days) {
+			dayEnd = 0;
+			pthread_cond_broadcast(&cv_dayEnd);
+		}	
+	}
+	for(i=0;i<numOfCustomers;i++) {
+		pthread_cancel(customer[i]);
+	}
 	print_log();
 }
