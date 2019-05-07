@@ -22,6 +22,7 @@ struct Product {
 struct Transaction {
 	int t_ID;
 	int c_ID;
+	int s_ID;
 	int op;
 	int product_ID;
 	int numOfProduct;
@@ -32,6 +33,7 @@ struct Transaction {
 
 struct Seller_Request {
 	int c_ID;
+	int s_ID;
 	struct Transaction *t;
 	pthread_mutex_t mutex;
 	pthread_cond_t cv;
@@ -39,7 +41,7 @@ struct Seller_Request {
 	int customer_wait;
 };
 
-int numOfSellers,numOfProductTypes,days;
+int numOfSellers,numOfProductTypes,days,numOfCustomers;
 int t_count=0;
 int currentday=1;
 int dayEnd=0;
@@ -96,6 +98,7 @@ void *seller_thread(void *ptr) {
 				pthread_mutex_unlock(&(p->mutex));
 			}
 			if(request->t != NULL) { //If transaction accepted, append to the transactions list
+				t->s_ID = request->s_ID;
 				pthread_mutex_lock(&transaction_mutex);
 				append_transaction(t);
 				pthread_mutex_unlock(&transaction_mutex);
@@ -148,6 +151,21 @@ void *customer_thread(void *ptr) {
 			t = prepare_transaction(ptr);
 			while(t != NULL) {
 				for(i=0;i<numOfSellers;i++) {
+				
+					if(dayEnd) {
+						pthread_mutex_lock(&(((struct C_Account*)ptr)->cust_mutex));
+						pthread_mutex_lock(&threadsReady_mutex);
+						threadsReady--;
+						pthread_mutex_unlock(&threadsReady_mutex);
+						while(dayEnd)
+							pthread_cond_wait(&(cv_dayEnd),&(((struct C_Account*)ptr)->cust_mutex));
+						pthread_mutex_unlock(&(((struct C_Account*)ptr)->cust_mutex));
+						((struct C_Account*)ptr)->allowed_op = c_account->allowed_op;
+						((struct C_Account*)ptr)->allowed_res = c_account->allowed_res;
+						free(t);
+						t = NULL;
+						break;
+					}
 					if(pthread_mutex_trylock(&(seller_requests[i].mutex))==0) {
 						seller_requests[i].c_ID = c_account->c_ID;
 						seller_requests[i].customer_wait = 1;
@@ -225,6 +243,7 @@ struct Transaction *prepare_transaction(struct C_Account *c) {
 		else {
 			if((t->cancelled_transaction = transaction_to_cancel(c->c_ID)) != NULL) {
 				t->op = 2;
+				t->product_ID = t->cancelled_transaction->product_ID;
 			}
 			else { 
 				flag = 1;
@@ -262,7 +281,7 @@ struct Transaction *transaction_to_cancel(int c_ID) {
 	int count=0;
 	struct Transaction *t[20];
 	struct Transaction *temp = transactions;
-	while((temp != NULL) && (temp->day <= currentday)) {
+	while(temp != NULL) {
 		if((temp->day == currentday) && (temp->c_ID == c_ID) && (temp->op == 1)) {
 			t[count] = temp;
 			count++;
@@ -292,16 +311,72 @@ void initialize_products() {
 }
 
 void print_log() {
+	int i,j,sold,reserved,canceled;
+	int count=0;
 	struct Transaction *t = transactions;
 	while(t != NULL) {
 		fprintf(stderr,"%d\t%d\t%d\n",t->c_ID,t->op,t->day);
 		t = t->next;
 	}
+	fprintf(stderr,"\n----------------------------------\n\n");
+
+	for(i=1;i<=days;i++) {
+		fprintf(stderr,"DAY %d\n\n",i);
+		fprintf(stderr,"number of transactions performed:\n\n");
+		for(j=1;j<=numOfCustomers;j++) {
+			t = transactions;
+			while(t != NULL) {
+				if(t->c_ID == j && t->day == i) {
+					count++;
+				}
+				t = t->next;
+			}
+			fprintf(stderr,"customer-%d: %d\n",j,count);
+			count = 0;
+		}
+		t = transactions;
+		for(j=0;j<numOfSellers;j++) {
+			while(t != NULL) {
+				if(t->s_ID == j && t->day == i) {
+					count++;
+				}
+				t = t->next;
+			}
+			fprintf(stderr,"seller-%d: %d\n",j,count);
+			count = 0;
+		}
+		
+		fprintf(stderr,"\nnumber of products sold, reserved and canceled\n\n");
+		
+		for(j=0;j<numOfProductTypes;j++) {
+			t = transactions;
+			sold = 0;
+			reserved = 0;
+			canceled = 0;
+			while(t != NULL) {
+				if(t->day == i && t->product_ID == j) {
+					if(t->op == 0) {
+						sold += t->numOfProduct;
+					}
+					else if(t->op == 1) {
+						reserved += t->numOfProduct;
+					}
+					else {
+						canceled += t->cancelled_transaction->numOfProduct;
+					}
+				}
+				t = t->next;
+			}
+			fprintf(stderr,"product#%d\t%d\t%d\t%d\n",j,sold,reserved,canceled);
+		}
+		fprintf(stderr,"\n-------------------------------------\n");
+	}
+	
 }
 
 int main() {
 	FILE *fp;
-	int i,numOfCustomers,num;
+	int i,num;
 	int num1, num2, num3;
 	char line[20];
 	srand(time(NULL));
@@ -343,14 +418,12 @@ int main() {
 	pthread_t *customer = malloc(numOfCustomers*sizeof(pthread_t));
 	
 	for(i=0;i<numOfSellers;i++) {
+		seller_requests[i].s_ID = i;
 		pthread_create(&seller[i],NULL,seller_thread,&seller_requests[i]);
 	}
 	for(i=0;i<numOfCustomers;i++) {
 		pthread_create(&customer[i],NULL,customer_thread,&c_accounts[i]);
 	}
-	
-//	for(i=0;i<numOfSellers;i++) pthread_join(seller[i],NULL);
-//	for(i=0;i<numOfCustomers;i++) pthread_join(customer[i],NULL);
 	
 	for(currentday=1;currentday<=days;currentday++) {
 		sleep(2);
